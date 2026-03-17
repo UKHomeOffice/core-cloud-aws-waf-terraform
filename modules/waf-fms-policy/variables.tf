@@ -16,6 +16,12 @@ variable "tenant" {
   default = null
 }
 
+variable "exclude_account_ids" {
+  description = "Account IDs to exclude from this FMS policy via exclude_map."
+  type        = list(string)
+  default     = []
+}
+
 ############################################################
 # WAF Logging (optional)
 ############################################################

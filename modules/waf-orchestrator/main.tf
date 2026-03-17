@@ -333,6 +333,8 @@ module "default_policies" {
   tenant_rule_group_arn = null
   tenant                = null
 
+  exclude_account_ids = var.platform_exclude_account_ids
+
   # BLUE = default (exclude-mode)
   # GREEN (and any other slot you want opt-in) = include-only
   policy_selector = each.value == var.default_catch_all_slot ? "default" : "default_include"
@@ -379,6 +381,8 @@ module "tenant_policies" {
 
   essential_rule_group_arn = module.essential_rule_groups[each.value.slot].rule_group_arn
   tenant_rule_group_arn    = module.tenant_rule_groups[each.key].rule_group_arn
+
+  exclude_account_ids = var.tenant_exclude_account_ids
 
   enable_core_rule_set = try(var.slot_config[each.value.slot].enable_core_rule_set, var.enable_core_rule_set)
   enable_ip_reputation = try(var.slot_config[each.value.slot].enable_ip_reputation, var.enable_ip_reputation)

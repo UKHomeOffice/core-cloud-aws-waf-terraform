@@ -183,7 +183,6 @@ locals {
         customRequestHandling                   = null
         customResponse                          = null
         overrideCustomerWebACLAssociation       = false
-        overrideCustomerWebACLAssociation       = false
         sampledRequestsEnabledForDefaultActions = true
       },
       local.logging_config
@@ -254,6 +253,13 @@ resource "aws_fms_policy" "this" {
     "AWS::ApiGateway::Stage",
   ]
 
+  dynamic "exclude_map" {
+    for_each = length(var.exclude_account_ids) > 0 ? [1] : []
+    content {
+      account = var.exclude_account_ids
+    }
+  }
+
   resource_tags         = local.effective_resource_tags
   exclude_resource_tags = local.exclude_mode
 
@@ -268,6 +274,7 @@ resource "aws_fms_policy" "this" {
   tags = local.policy_tags
 
   lifecycle {
+
     precondition {
       condition     = var.policy_selector != "tenant" || (var.tenant != null && var.tenant_rule_group_arn != null)
       error_message = "When policy_selector=tenant, you must set tenant and tenant_rule_group_arn."

@@ -79,6 +79,18 @@ variable "waf_log_destination_arn_by_slot" {
   default     = {}
 }
 
+variable "platform_exclude_account_ids" {
+  description = "Account IDs to exclude from platform default FMS policies. Platform controlled."
+  type        = list(string)
+  default     = []
+}
+
+variable "tenant_exclude_account_ids" {
+  description = "Account IDs to exclude from all tenant FMS policies. Platform controlled."
+  type        = list(string)
+  default     = []
+}
+
 ############################################################
 # Platform controls (Emergency + Baseline)
 ############################################################
