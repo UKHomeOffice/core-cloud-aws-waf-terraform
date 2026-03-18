@@ -16,20 +16,21 @@ variable "tenant" {
   default = null
 }
 
+variable "include_account_ids" {
+  description = "Account IDs to scope this FMS policy to. Mutually exclusive with exclude_account_ids."
+  type        = list(string)
+  default     = []
+}
+
 variable "exclude_account_ids" {
-  description = "Account IDs to exclude from this FMS policy via exclude_map."
+  description = "Account IDs to exclude from this FMS policy."
   type        = list(string)
   default     = []
 }
 
 ############################################################
-# WAF Logging (optional)
+# WAF Logging
 ############################################################
-variable "enable_waf_logging" {
-  type    = bool
-  default = false
-}
-
 variable "waf_log_destination_arn" {
   description = "Kinesis Firehose delivery stream ARN used for WAF logging (must exist in the account where the WebACL is created)."
   type        = string

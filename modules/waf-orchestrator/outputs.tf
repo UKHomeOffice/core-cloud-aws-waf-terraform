@@ -69,3 +69,8 @@ output "tenant_resource_tags" {
     }
   }
 }
+
+output "effective_platform_exclude_account_ids" {
+  description = "Effective list of account IDs excluded from platform default policies (platform + all tenant exclusions combined)."
+  value       = local.effective_platform_exclude
+}

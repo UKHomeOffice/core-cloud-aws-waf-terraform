@@ -1,6 +1,6 @@
 locals {
   logging_config = (
-    var.enable_waf_logging && var.waf_log_destination_arn != null
+    var.waf_log_destination_arn != null
     ? {
     loggingConfiguration = {
       logDestinationConfigs = [var.waf_log_destination_arn]
@@ -253,6 +253,13 @@ resource "aws_fms_policy" "this" {
     "AWS::ApiGateway::Stage",
   ]
 
+  dynamic "include_map" {
+    for_each = length(var.include_account_ids) > 0 ? [1] : []
+    content {
+      account = var.include_account_ids
+    }
+  }
+
   dynamic "exclude_map" {
     for_each = length(var.exclude_account_ids) > 0 ? [1] : []
     content {
@@ -274,15 +281,21 @@ resource "aws_fms_policy" "this" {
   tags = local.policy_tags
 
   lifecycle {
-
+    precondition {
+      condition     = var.policy_selector != "tenant" || length(var.include_account_ids) > 0
+      error_message = "Tenant policies must have include_account_ids set — tenant policies cannot be org-wide."
+    }
     precondition {
       condition     = var.policy_selector != "tenant" || (var.tenant != null && var.tenant_rule_group_arn != null)
       error_message = "When policy_selector=tenant, you must set tenant and tenant_rule_group_arn."
     }
-
     precondition {
       condition     = var.policy_selector == "tenant" || var.tenant == null
       error_message = "tenant must be null unless policy_selector=tenant."
+    }
+    precondition {
+      condition     = !(length(var.include_account_ids) > 0 && length(var.exclude_account_ids) > 0)
+      error_message = "include_account_ids and exclude_account_ids are mutually exclusive."
     }
   }
 }

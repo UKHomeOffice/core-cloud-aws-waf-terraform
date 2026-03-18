@@ -68,11 +68,6 @@ variable "default_catch_all_slot" {
   default = "blue"
 }
 
-variable "enable_waf_logging" {
-  type    = bool
-  default = false
-}
-
 variable "waf_log_destination_arn_by_slot" {
   description = "Map of slot => Firehose delivery stream ARN for WAF logging (streams must be named aws-waf-logs-*)."
   type        = map(string)
@@ -81,12 +76,6 @@ variable "waf_log_destination_arn_by_slot" {
 
 variable "platform_exclude_account_ids" {
   description = "Account IDs to exclude from platform default FMS policies. Platform controlled."
-  type        = list(string)
-  default     = []
-}
-
-variable "tenant_exclude_account_ids" {
-  description = "Account IDs to exclude from all tenant FMS policies. Platform controlled."
   type        = list(string)
   default     = []
 }
@@ -119,21 +108,20 @@ variable "platform" {
 # Tenants (ip_sets + geo per slot)
 ############################################################
 variable "tenants" {
+  description = "Map of tenant configurations."
   type = map(object({
-    enabled            = optional(bool, true)
-    slots              = optional(list(string))
-    enable_bot_control = optional(bool, false)
-
-    ip_sets = optional(map(object({
-      allowlist = optional(list(string), [])
-      blocklist = optional(list(string), [])
-    })), {})
-
-    geo = optional(map(object({
-      allow = optional(list(string), [])
-      block = optional(list(string), [])
-    })), {})
+    enabled             = bool
+    enable_bot_control  = bool
+    tags                = map(string)
+    include_account_ids = optional(list(string), [])
+    exclude_account_ids = optional(list(string), [])
+    ip_sets = object({
+      blue  = object({ allowlist = list(string), blocklist = list(string) })
+      green = object({ allowlist = list(string), blocklist = list(string) })
+    })
+    geo = object({
+      blue  = object({ allow = list(string), block = list(string) })
+      green = object({ allow = list(string), block = list(string) })
+    })
   }))
-
-  default = {}
 }

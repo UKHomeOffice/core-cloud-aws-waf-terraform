@@ -1,4 +1,29 @@
 locals {
+
+  ############################################################
+  # Collect all tenant-defined exclusions and included accounts
+  # and merge with platform exclusions for the blue catch-all.
+  #
+  # Accounts in tenant include_account_ids are automatically
+  # excluded from the platform catch-all — if a tenant has their
+  # own WAF policy, the blue catch-all should not also apply.
+  ############################################################
+  tenant_defined_exclusions = distinct(flatten([
+    for tenant_name, tenant in var.tenants :
+    try(tenant.exclude_account_ids, [])
+  ]))
+
+  tenant_included_accounts = distinct(flatten([
+    for tenant_name, tenant in var.tenants :
+    try(tenant.include_account_ids, [])
+  ]))
+
+  effective_platform_exclude = distinct(concat(
+    var.platform_exclude_account_ids,
+    local.tenant_defined_exclusions,
+    local.tenant_included_accounts
+  ))
+
   ############################################################
   # Slots per tenant:
   # - if tenant.slots set -> use it
@@ -92,6 +117,26 @@ locals {
 }
 
 ############################################################
+# TENANT ACCOUNT VALIDATION
+# Ensures all enabled tenants have include_account_ids set
+# Prevents accidental org-wide tenant policies
+############################################################
+resource "terraform_data" "tenant_account_validation" {
+  for_each = {
+    for tenant_name, tenant in var.tenants :
+    tenant_name => tenant
+    if try(tenant.enabled, true) && length(try(tenant.include_account_ids, [])) == 0
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(each.key) == 0  # always false — each.key is never empty
+      error_message = "Tenant '${each.key}' must have include_account_ids set. Tenant policies cannot be org-wide — this prevents unintended WAF attachment across all accounts."
+    }
+  }
+}
+
+############################################################
 # ESSENTIAL RULE GROUPS
 ############################################################
 module "essential_rule_groups" {
@@ -163,7 +208,7 @@ resource "aws_wafv2_ip_set" "platform_baseline_block" {
 module "platform_baseline" {
   source = "../waf-rule-group-platform-baseline"
 
-  for_each = local.platform_baseline_by_slot  # ← remove the if condition entirely
+  for_each = local.platform_baseline_by_slot
 
   name_prefix = var.name_prefix
   environment = var.environment
@@ -318,6 +363,7 @@ module "tenant_rule_groups" {
 # Enterprise pattern:
 # - BLUE is the global fallback (exclude anything "fms-managed=true")
 # - GREEN is include-only (opt-in via tags)
+# - Accounts with tenant policies are auto-excluded from catch-all
 ############################################################
 module "default_policies" {
   source = "../waf-fms-policy"
@@ -333,7 +379,7 @@ module "default_policies" {
   tenant_rule_group_arn = null
   tenant                = null
 
-  exclude_account_ids = var.platform_exclude_account_ids
+  exclude_account_ids = local.effective_platform_exclude
 
   # BLUE = default (exclude-mode)
   # GREEN (and any other slot you want opt-in) = include-only
@@ -355,7 +401,6 @@ module "default_policies" {
   platform_emergency_first_rule_group_arn = try(module.platform_emergency_first[each.value].rule_group_arn, null)
   platform_emergency_last_rule_group_arn  = try(module.platform_emergency_last[each.value].rule_group_arn, null)
 
-  enable_waf_logging      = try(var.slot_config[each.value].enable_waf_logging, var.enable_waf_logging)
   waf_log_destination_arn = try(var.waf_log_destination_arn_by_slot[each.value], null)
 
   tags = var.tags
@@ -382,7 +427,7 @@ module "tenant_policies" {
   essential_rule_group_arn = module.essential_rule_groups[each.value.slot].rule_group_arn
   tenant_rule_group_arn    = module.tenant_rule_groups[each.key].rule_group_arn
 
-  exclude_account_ids = var.tenant_exclude_account_ids
+  include_account_ids = try(var.tenants[each.value.tenant].include_account_ids, [])
 
   enable_core_rule_set = try(var.slot_config[each.value.slot].enable_core_rule_set, var.enable_core_rule_set)
   enable_ip_reputation = try(var.slot_config[each.value.slot].enable_ip_reputation, var.enable_ip_reputation)
@@ -404,8 +449,7 @@ module "tenant_policies" {
   platform_emergency_first_rule_group_arn = try(module.platform_emergency_first[each.value.slot].rule_group_arn, null)
   platform_emergency_last_rule_group_arn  = try(module.platform_emergency_last[each.value.slot].rule_group_arn, null)
 
-  enable_waf_logging       = try(var.slot_config[each.value.slot].enable_waf_logging, var.enable_waf_logging)
-  waf_log_destination_arn  = try(var.waf_log_destination_arn_by_slot[each.value.slot], null)
+  waf_log_destination_arn = try(var.waf_log_destination_arn_by_slot[each.value.slot], null)
 
   tags = var.tags
 }
