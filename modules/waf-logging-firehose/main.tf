@@ -13,8 +13,6 @@ locals {
   )
 }
 
-data "aws_caller_identity" "this" {}
-
 resource "aws_iam_role" "firehose" {
   name = "${var.name_prefix}-${var.environment}-waf-firehose-role"
 

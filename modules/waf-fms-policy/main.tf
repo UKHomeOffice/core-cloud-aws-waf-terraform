@@ -248,10 +248,7 @@ locals {
 resource "aws_fms_policy" "this" {
   name                = local.policy_name
   remediation_enabled = true
-  resource_type_list = [
-    "AWS::ElasticLoadBalancingV2::LoadBalancer",
-    "AWS::ApiGateway::Stage",
-  ]
+  resource_type_list = var.resource_type_list
 
   dynamic "include_map" {
     for_each = length(var.include_account_ids) > 0 ? [1] : []

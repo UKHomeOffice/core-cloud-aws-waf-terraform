@@ -46,13 +46,11 @@ output "tenant_ip_sets" {
 }
 
 output "default_resource_tags_by_slot" {
-  description = "Expected resource tags for default platform policy attachment by slot."
   value = {
-    for slot in var.slots :
-    slot => {
-      "fms-managed"  = "true"
-      "waf:selector" = slot == var.default_catch_all_slot ? "default" : "default_include"
-      "waf:slot"     = slot
+    for slot in var.slots : slot => {
+      (var.fms_tag_key) = "true"
+      "waf:selector"    = try(var.slot_config[slot].policy_selector, "default_include")
+      "waf:slot"        = slot
     }
   }
 }

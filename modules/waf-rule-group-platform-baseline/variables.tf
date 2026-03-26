@@ -20,12 +20,6 @@ variable "trusted_ipset_arn" {
   default = null
 }
 
-# Optional trusted geo list (labels platform:trusted)
-variable "trusted_countries" {
-  type    = list(string)
-  default = []
-}
-
 ############################################################
 # BLOCKS
 ############################################################
@@ -45,4 +39,14 @@ variable "block_countries" {
 variable "tags" {
   type    = map(string)
   default = {}
+}
+
+variable "healthcheck_allow_ipset_arn" {
+  type    = string
+  default = null
+}
+
+variable "curl_allow_ipset_arn" {
+  type    = string
+  default = null
 }

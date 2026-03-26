@@ -147,3 +147,12 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "resource_type_list" {
+  description = "Resource types this FMS policy applies to."
+  type        = list(string)
+  default     = [
+    "AWS::ElasticLoadBalancingV2::LoadBalancer",
+    "AWS::ApiGateway::Stage",
+  ]
+}

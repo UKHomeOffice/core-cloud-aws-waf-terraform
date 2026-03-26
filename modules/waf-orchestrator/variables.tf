@@ -63,11 +63,6 @@ variable "antiddos_challenge_usage" {
   default = "DISABLED"
 }
 
-variable "default_catch_all_slot" {
-  type    = string
-  default = "blue"
-}
-
 variable "waf_log_destination_arn_by_slot" {
   description = "Map of slot => Firehose delivery stream ARN for WAF logging (streams must be named aws-waf-logs-*)."
   type        = map(string)
@@ -92,12 +87,18 @@ variable "platform" {
 
     baseline = optional(object({
       # TRUSTED (label-only -> platform:trusted)
-      trusted_ip_sets    = optional(any, {}) # global + per-slot keys; uses "allowlist" list
-      trusted_countries  = optional(any, {}) # global + per-slot keys; list(string)
+      trusted_ip_sets   = optional(any, {}) # global + per-slot keys; uses "allowlist" list
+      trusted_countries = optional(any, {}) # global + per-slot keys; list(string)
 
       # BLOCKS
-      block_ip_sets      = optional(any, {}) # global + per-slot keys; uses "blocklist" list
-      block_countries    = optional(any, {}) # global + per-slot keys; list(string)
+      block_ip_sets   = optional(any, {}) # global + per-slot keys; uses "blocklist" list
+      block_countries = optional(any, {}) # global + per-slot keys; list(string)
+
+      # OPERATIONAL ALLOW RULES
+      operational_allow = optional(object({
+        healthcheck_ip_sets = optional(any, {}) # global + per-slot keys; uses "allowlist"
+        curl_ip_sets        = optional(any, {}) # global + per-slot keys; uses "allowlist"
+      }), {})
     }), {})
   })
 
@@ -115,13 +116,17 @@ variable "tenants" {
     tags                = map(string)
     include_account_ids = optional(list(string), [])
     exclude_account_ids = optional(list(string), [])
-    ip_sets = object({
-      blue  = object({ allowlist = list(string), blocklist = list(string) })
-      green = object({ allowlist = list(string), blocklist = list(string) })
-    })
-    geo = object({
-      blue  = object({ allow = list(string), block = list(string) })
-      green = object({ allow = list(string), block = list(string) })
-    })
+
+    slots = optional(list(string), [])
+
+    ip_sets = optional(map(object({
+      allowlist = list(string)
+      blocklist = list(string)
+    })), {})
+
+    geo = optional(map(object({
+      allow = list(string)
+      block = list(string)
+    })), {})
   }))
 }

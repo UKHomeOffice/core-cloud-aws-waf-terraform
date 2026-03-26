@@ -8,8 +8,101 @@ resource "aws_wafv2_rule_group" "this" {
   scope       = "REGIONAL"
   capacity    = 50
 
+  dynamic "rule" {
+    for_each = var.healthcheck_allow_ipset_arn != null ? [1] : []
+
+    content {
+      name     = "Allow-ALB-HealthChecks"
+      priority = 0
+
+      action {
+        allow {}
+      }
+
+      statement {
+        and_statement {
+          statement {
+            ip_set_reference_statement {
+              arn = var.healthcheck_allow_ipset_arn
+            }
+          }
+
+          statement {
+            byte_match_statement {
+              search_string         = "ELB-HealthChecker"
+              positional_constraint = "CONTAINS"
+
+              field_to_match {
+                single_header {
+                  name = "user-agent"
+                }
+              }
+
+              text_transformation {
+                priority = 0
+                type     = "NONE"
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "${local.name}-allow-alb-healthchecks"
+        sampled_requests_enabled   = true
+      }
+    }
+  }
+
+  dynamic "rule" {
+    for_each = var.curl_allow_ipset_arn != null ? [1] : []
+
+    content {
+      name     = "Allow-Curl-From-Trusted-IP"
+      priority = 1
+
+      action {
+        allow {}
+      }
+
+      statement {
+        and_statement {
+          statement {
+            ip_set_reference_statement {
+              arn = var.curl_allow_ipset_arn
+            }
+          }
+
+          statement {
+            byte_match_statement {
+              search_string         = "curl"
+              positional_constraint = "CONTAINS"
+
+              field_to_match {
+                single_header {
+                  name = "user-agent"
+                }
+              }
+
+              text_transformation {
+                priority = 0
+                type     = "LOWERCASE"
+              }
+            }
+          }
+        }
+      }
+
+      visibility_config {
+        cloudwatch_metrics_enabled = true
+        metric_name                = "${local.name}-allow-curl"
+        sampled_requests_enabled   = true
+      }
+    }
+  }
   ############################################################
-  # Rule 1: Platform Trusted IPs (optional) - LABEL ONLY
+  # Rule 2: Platform Trusted IPs (optional) - LABEL ONLY
   # Labels requests as platform:trusted for Essential to skip.
   # Does NOT allow/block.
   ############################################################
@@ -17,7 +110,7 @@ resource "aws_wafv2_rule_group" "this" {
     for_each = var.trusted_ipset_arn == null ? [] : [1]
     content {
       name     = "platform-trusted-ip"
-      priority = 1
+      priority = 2
 
       action {
         count {}

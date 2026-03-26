@@ -1,13 +1,5 @@
 locals {
 
-  ############################################################
-  # Collect all tenant-defined exclusions and included accounts
-  # and merge with platform exclusions for the blue catch-all.
-  #
-  # Accounts in tenant include_account_ids are automatically
-  # excluded from the platform catch-all — if a tenant has their
-  # own WAF policy, the blue catch-all should not also apply.
-  ############################################################
   tenant_defined_exclusions = distinct(flatten([
     for tenant_name, tenant in var.tenants :
     try(tenant.exclude_account_ids, [])
@@ -34,7 +26,16 @@ locals {
     tenant_name => (
       try(length(tenant.slots), 0) > 0
       ? tenant.slots
-      : var.slots
+      : distinct(concat(
+      [
+        for slot, cfg in try(tenant.ip_sets, {}) : slot
+        if length(try(cfg.allowlist, [])) > 0 || length(try(cfg.blocklist, [])) > 0
+      ],
+      [
+        for slot, cfg in try(tenant.geo, {}) : slot
+        if length(try(cfg.allow, [])) > 0 || length(try(cfg.block, [])) > 0
+      ]
+    ))
     )
   }
 
@@ -62,12 +63,7 @@ locals {
         }
       ] : []
       )
-    ]) : item.key => {
-      tenant  = item.tenant
-      slot    = item.slot
-      ip_sets = item.ip_sets
-      geo     = item.geo
-    }
+    ]) : item.key => item
   }
 
   ############################################################
@@ -96,11 +92,6 @@ locals {
       trusted_ips = distinct(concat(
         try(var.platform.baseline.trusted_ip_sets.global.allowlist, []),
         try(var.platform.baseline.trusted_ip_sets[slot].allowlist, [])
-      ))
-
-      trusted_countries = distinct(concat(
-        try(var.platform.baseline.trusted_countries.global.countries, try(var.platform.baseline.trusted_countries.global, [])),
-        try(var.platform.baseline.trusted_countries[slot].countries, try(var.platform.baseline.trusted_countries[slot], []))
       ))
 
       block_ips = distinct(concat(
@@ -215,10 +206,12 @@ module "platform_baseline" {
   slot        = each.key
 
   trusted_ipset_arn = try(aws_wafv2_ip_set.platform_baseline_trusted[each.key].arn, null)
-  trusted_countries = each.value.trusted_countries
 
   block_ipset_arn = try(aws_wafv2_ip_set.platform_baseline_block[each.key].arn, null)
   block_countries = each.value.block_countries
+
+  healthcheck_allow_ipset_arn = try(aws_wafv2_ip_set.platform_healthcheck_allow[each.key].arn, null)
+  curl_allow_ipset_arn        = try(aws_wafv2_ip_set.platform_curl_allow[each.key].arn, null)
 
   tags = var.tags
 }
@@ -359,11 +352,6 @@ module "tenant_rule_groups" {
 
 ############################################################
 # DEFAULT POLICIES
-#
-# Enterprise pattern:
-# - BLUE is the global fallback (exclude anything "fms-managed=true")
-# - GREEN is include-only (opt-in via tags)
-# - Accounts with tenant policies are auto-excluded from catch-all
 ############################################################
 module "default_policies" {
   source = "../waf-fms-policy"
@@ -381,11 +369,16 @@ module "default_policies" {
 
   exclude_account_ids = local.effective_platform_exclude
 
-  # BLUE = default (exclude-mode)
-  # GREEN (and any other slot you want opt-in) = include-only
-  policy_selector = each.value == var.default_catch_all_slot ? "default" : "default_include"
+  policy_selector = try(var.slot_config[each.value].policy_selector, "default_include")
 
-  # Rule toggles (slot overrides)
+  resource_type_list = try(
+    var.slot_config[each.value].resource_type_list,
+    [
+      "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "AWS::ApiGateway::Stage",
+    ]
+  )
+
   enable_core_rule_set = try(var.slot_config[each.value].enable_core_rule_set, var.enable_core_rule_set)
   enable_ip_reputation = try(var.slot_config[each.value].enable_ip_reputation, var.enable_ip_reputation)
   enable_anonymous_ip  = try(var.slot_config[each.value].enable_anonymous_ip, var.enable_anonymous_ip)
@@ -429,12 +422,19 @@ module "tenant_policies" {
 
   include_account_ids = try(var.tenants[each.value.tenant].include_account_ids, [])
 
+  resource_type_list = try(
+    var.slot_config[each.value.slot].resource_type_list,
+    [
+      "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "AWS::ApiGateway::Stage",
+    ]
+  )
+
   enable_core_rule_set = try(var.slot_config[each.value.slot].enable_core_rule_set, var.enable_core_rule_set)
   enable_ip_reputation = try(var.slot_config[each.value.slot].enable_ip_reputation, var.enable_ip_reputation)
   enable_anonymous_ip  = try(var.slot_config[each.value.slot].enable_anonymous_ip, var.enable_anonymous_ip)
   enable_layer7_ddos   = try(var.slot_config[each.value.slot].enable_layer7_ddos, var.enable_layer7_ddos)
 
-  # bot control: tenant override > slot override > global default
   enable_bot_control = try(
     var.tenants[each.value.tenant].enable_bot_control,
     try(var.slot_config[each.value.slot].enable_bot_control, var.enable_bot_control)
@@ -452,4 +452,48 @@ module "tenant_policies" {
   waf_log_destination_arn = try(var.waf_log_destination_arn_by_slot[each.value.slot], null)
 
   tags = var.tags
+}
+
+resource "aws_wafv2_ip_set" "platform_healthcheck_allow" {
+  for_each = {
+    for slot in var.slots : slot => distinct(concat(
+      try(var.platform.baseline.operational_allow.healthcheck_ip_sets.global.allowlist, []),
+      try(var.platform.baseline.operational_allow.healthcheck_ip_sets[slot].allowlist, [])
+    ))
+    if length(distinct(concat(
+      try(var.platform.baseline.operational_allow.healthcheck_ip_sets.global.allowlist, []),
+      try(var.platform.baseline.operational_allow.healthcheck_ip_sets[slot].allowlist, [])
+    ))) > 0
+  }
+
+  name               = "${var.name_prefix}-healthcheck-${each.key}"
+  scope              = "REGIONAL"
+  ip_address_version = "IPV4"
+  addresses          = each.value
+
+  tags = merge(var.tags, {
+    "waf:slot" = each.key
+  })
+}
+
+resource "aws_wafv2_ip_set" "platform_curl_allow" {
+  for_each = {
+    for slot in var.slots : slot => distinct(concat(
+      try(var.platform.baseline.operational_allow.curl_ip_sets.global.allowlist, []),
+      try(var.platform.baseline.operational_allow.curl_ip_sets[slot].allowlist, [])
+    ))
+    if length(distinct(concat(
+      try(var.platform.baseline.operational_allow.curl_ip_sets.global.allowlist, []),
+      try(var.platform.baseline.operational_allow.curl_ip_sets[slot].allowlist, [])
+    ))) > 0
+  }
+
+  name               = "${var.name_prefix}-curl-${each.key}"
+  scope              = "REGIONAL"
+  ip_address_version = "IPV4"
+  addresses          = each.value
+
+  tags = merge(var.tags, {
+    "waf:slot" = each.key
+  })
 }
