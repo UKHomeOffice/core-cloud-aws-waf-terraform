@@ -124,6 +124,15 @@ variable "platform" {
       # CAPACITY
       capacity = optional(any, {})
 
+      # BOT CONTROL RULE OVERRIDES
+      # global key applies to all slots; per-slot keys override global values
+      # Values: COUNT | BLOCK | ALLOW | NONE
+      bot_control_rules = optional(any, {})
+
+      # COMMON = only COMMON rules active
+      # TARGETED = COMMON + TGT_ rules active (default)
+      bot_control_inspection_level = optional(string, "TARGETED")
+
       # BLOCKS
       block_ip_sets   = optional(any, {}) # global + per-slot keys; uses "blocklist" list
       block_countries = optional(any, {}) # global + per-slot keys; list(string)

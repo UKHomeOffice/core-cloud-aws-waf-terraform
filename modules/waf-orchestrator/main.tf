@@ -112,6 +112,17 @@ locals {
   }
 
   ############################################################
+  # Bot control rules per-slot (merge global + slot-specific)
+  # Slot-specific values override global values for the same key
+  ############################################################
+  merged_bot_control_rules_by_slot = {
+    for slot in var.slots : slot => merge(
+      try(var.platform.baseline.bot_control_rules.global, {}),
+      try(var.platform.baseline.bot_control_rules[slot], {})
+    )
+  }
+
+  ############################################################
   # Platform baseline per-slot (merge global + slot-specific)
   ############################################################
   platform_baseline_by_slot = {
@@ -445,6 +456,9 @@ module "default_policies" {
   enable_anonymous_ip  = try(var.slot_config[each.value].enable_anonymous_ip, var.enable_anonymous_ip)
   enable_bot_control   = try(var.slot_config[each.value].enable_bot_control, var.enable_bot_control)
   enable_layer7_ddos   = try(var.slot_config[each.value].enable_layer7_ddos, var.enable_layer7_ddos)
+
+  bot_control_rules            = local.merged_bot_control_rules_by_slot[each.value]
+  bot_control_inspection_level = try(var.platform.baseline.bot_control_inspection_level, "TARGETED")
 
   antiddos_sensitivity_to_block = var.antiddos_sensitivity_to_block
   antiddos_challenge_usage      = var.antiddos_challenge_usage

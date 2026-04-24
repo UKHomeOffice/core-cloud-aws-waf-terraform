@@ -156,3 +156,19 @@ variable "resource_type_list" {
     "AWS::ApiGateway::Stage",
   ]
 }
+variable "bot_control_rules" {
+  description = "Map of Bot Control rule name to action override. Values: COUNT, BLOCK, ALLOW, NONE (NONE removes any override)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "bot_control_inspection_level" {
+  description = "Bot Control inspection level. COMMON includes only common bot rules. TARGETED additionally enables TGT_ rules."
+  type        = string
+  default     = "TARGETED"
+
+  validation {
+    condition     = contains(["COMMON", "TARGETED"], var.bot_control_inspection_level)
+    error_message = "Must be COMMON or TARGETED."
+  }
+}

@@ -148,7 +148,30 @@ locals {
         version              = null
         vendorName           = "AWS"
         managedRuleGroupName = "AWSManagedRulesBotControlRuleSet"
+        managedRuleGroupConfigs = [
+          {
+            awsmanagedRulesBotControlRuleSet = {
+              inspectionLevel = var.bot_control_inspection_level
+            }
+          }
+        ]
       }
+      # Only emit overrides for rules not set to NONE
+      ruleActionOverrides = length([
+        for k, v in var.bot_control_rules : k if v != "NONE"
+      ]) > 0 ? [
+        for rule_name, action in var.bot_control_rules :
+        {
+          name        = rule_name
+          actionToUse = (
+            action == "COUNT" ? { count = {} } :
+              action == "BLOCK" ? { block = {} } :
+                action == "ALLOW" ? { allow = {} } :
+                null
+          )
+        }
+        if action != "NONE"
+      ] : null
     } : null,
 
     local.rg_antiddos
